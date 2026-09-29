@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Arkiv – Teleskopskinnen</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <style>
+    :root {
+      --ink: #111;
+      --blue: #1d3f8a;
+      --blue-soft: #eef2fa;
+      --muted: #666;
+      --line: #e3e3e3;
+      --red: #b3261e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #fff;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 24px 16px 48px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    main { max-width: 640px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 32px; }
+    header img { width: 100%; max-width: 360px; height: auto; }
+    h1 { font-size: 1.5rem; margin: 8px 0 4px; letter-spacing: 0.02em; text-transform: uppercase; }
+    h2 { font-size: 1.1rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .sub { color: var(--muted); }
+    .card { border: 2px solid var(--ink); border-radius: 6px; padding: 20px; margin-bottom: 24px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input[type=text], input[type=password] {
+      width: 100%; font-size: 16px; padding: 12px; border: 1px solid #bbb; border-radius: 4px; margin-bottom: 16px;
+    }
+    .btn {
+      display: block; width: 100%; font-size: 1rem; font-weight: 700; padding: 14px;
+      background: var(--ink); color: #fff; border: 0; border-radius: 4px; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .btn:disabled { opacity: 0.35; cursor: default; }
+    .btn.secondary { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+    .picker {
+      display: block; border: 2px dashed var(--blue); background: var(--blue-soft); color: var(--blue);
+      text-align: center; padding: 28px 12px; border-radius: 6px; font-weight: 600; margin-bottom: 16px; cursor: pointer;
+    }
+    .picker input { display: none; }
+    .error { color: var(--red); margin-top: 10px; min-height: 1.2em; }
+    .status { margin-top: 12px; color: var(--muted); font-size: 0.95rem; }
+    .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+    .bar div { height: 100%; width: 0; background: var(--blue); transition: width 0.2s; }
+    .hidden { display: none; }
+    .item { border-top: 1px solid var(--line); padding: 14px 0; }
+    .item:first-child { border-top: 0; }
+    .item .name { font-weight: 600; word-break: break-word; }
+    .item .meta { color: var(--muted); font-size: 0.9rem; margin: 2px 0 10px; }
+    .item video { width: 100%; border-radius: 4px; background: #000; margin-bottom: 10px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions a, .actions button {
+      font-size: 0.9rem; font-weight: 600; padding: 8px 12px; border-radius: 4px; cursor: pointer;
+      border: 1px solid var(--ink); background: #fff; color: var(--ink); text-decoration: none;
+    }
+    .actions .del { border-color: var(--red); color: var(--red); margin-left: auto; }
+    .empty { color: var(--muted); }
+    .logout { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 0.9rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <a href="/"><img src="logo.png" alt="Teleskopskinnen"></a>
+      <h1>Arkiv</h1>
+      <p class="sub">Videoer fra jobb og produkttesting</p>
+    </header>
+
+    <!-- INNLOGGING -->
+    <section class="card" id="login">
+      <label for="pw">Passord</label>
+      <input type="password" id="pw" autocomplete="current-password">
+      <button class="btn" id="login-btn">Logg inn</button>
+      <p class="error" id="login-error"></p>
+    </section>
+
+    <div id="app" class="hidden">
+      <!-- OPPLASTING -->
+      <section class="card">
+        <h2>Last opp video</h2>
+        <label for="uploader">Hvem laster opp?</label>
+        <input type="text" id="uploader" list="names" placeholder="Navnet ditt" autocomplete="name">
+        <datalist id="names"><option value="Tore"><option value="Eirik"><option value="Trond"></datalist>
+        <label class="picker" id="picker">
+          <input type="file" id="files" accept="video/*" multiple>
+          <span id="picker-text">Trykk for å velge videoer</span>
+        </label>
+        <button class="btn" id="upload-btn" disabled>Last opp</button>
+        <div id="progress" class="hidden">
+          <p class="status" id="progress-text"></p>
+          <div class="bar"><div id="bar"></div></div>
+          <p class="status">Ikke lukk siden før opplastingen er ferdig.</p>
+        </div>
+        <p class="error" id="upload-error"></p>
+      </section>
+
+      <!-- LISTE -->
+      <section class="card">
+        <h2>Alle videoer</h2>
+        <div id="list"><p class="empty">Laster…</p></div>
+      </section>
+
+      <p style="text-align:center"><button class="logout" id="logout">Logg ut</button></p>
+    </div>
+  </main>
+
+  <script>
+    const WORKER_URL = 'https://teleskopskinnen-arkiv.trondfe.workers.dev';
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB — under Worker-grensen på 100 MB
+
+    const $ = id => document.getElementById(id);
+    const store = {
+      get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+      del: k => { try { localStorage.removeItem(k); } catch {} },
+    };
+
+    let password = store.get('arkiv-pw') || '';
+    let selected = [];
+
+    const api = (path, opts = {}) => fetch(WORKER_URL + path, {
+      ...opts,
+      headers: { ...(opts.headers || {}), 'X-Arkiv-Passord': password },
+    });
+
+    // ── Innlogging ─────────────────────────────────────────────
+    async function login(pw) {
+      password = pw;
+      const res = await api('/login', { method: 'POST' }).catch(() => null);
+      if (!res || !res.ok) {
+        password = '';
+        store.del('arkiv-pw');
+        $('login-error').textContent = res ? 'Feil passord.' : 'Fikk ikke kontakt med serveren.';
+        return;
+      }
+      store.set('arkiv-pw', pw);
+      $('login').classList.add('hidden');
+      $('app').classList.remove('hidden');
+      $('uploader').value = store.get('arkiv-navn') || '';
+      loadList();
+    }
+
+    $('login-btn').addEventListener('click', () => login($('pw').value));
+    $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') login($('pw').value); });
+    $('logout').addEventListener('click', () => { store.del('arkiv-pw'); location.reload(); });
+    if (password) login(password);
+
+    // ── Velg filer ─────────────────────────────────────────────
+    const refreshButton = () => {
+      $('upload-btn').disabled = !(selected.length && $('uploader').value.trim());
+    };
+    $('files').addEventListener('change', e => {
+      selected = [...e.target.files];
+      $('picker-text').textContent = selected.length
+        ? `${selected.length} video${selected.length > 1 ? 'er' : ''} valgt (${fmtSize(selected.reduce((s, f) => s + f.size, 0))})`
+        : 'Trykk for å velge videoer';
+      refreshButton();
+    });
+    $('uploader').addEventListener('input', refreshButton);
+
+    // ── Opplasting ─────────────────────────────────────────────
+    $('upload-btn').addEventListener('click', async () => {
+      const uploader = $('uploader').value.trim();
+      store.set('arkiv-navn', uploader);
+      $('upload-btn').disabled = true;
+      $('upload-error').textContent = '';
+      $('progress').classList.remove('hidden');
+
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i];
+        const label = selected.length > 1 ? `Video ${i + 1} av ${selected.length}` : 'Laster opp';
+        try {
+          await uploadFile(file, uploader, pct => {
+            $('progress-text').textContent = `${label}: ${Math.round(pct)} %`;
+            $('bar').style.width = pct + '%';
+          });
+        } catch (err) {
+          $('upload-error').textContent = `Opplasting av «${file.name}» feilet. Sjekk nettet og prøv igjen.`;
+          $('progress').classList.add('hidden');
+          refreshButton();
+          return;
+        }
+      }
+
+      $('progress-text').textContent = 'Ferdig!';
+      selected = [];
+      $('files').value = '';
+      $('picker-text').textContent = 'Trykk for å velge videoer';
+      setTimeout(() => $('progress').classList.add('hidden'), 1500);
+      loadList();
+    });
+
+    async function uploadFile(file, uploader, onProgress) {
+      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || 'video/mp4' });
+      const createRes = await api(`/multipart/create?${q}`, { method: 'POST' });
+      if (!createRes.ok) throw new Error('create');
+      const { key, uploadId } = await createRes.json();
+
+      const parts = [];
+      let done = 0;
+      try {
+        for (let offset = 0, n = 1; offset < file.size; offset += CHUNK_SIZE, n++) {
+          const chunk = file.slice(offset, offset + CHUNK_SIZE);
+          parts.push(await uploadPart(key, uploadId, n, chunk, loaded => {
+            onProgress(((done + loaded) / file.size) * 100);
+          }));
+          done += chunk.size;
+        }
+        const res = await api('/multipart/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, uploadId, parts }),
+        });
+        if (!res.ok) throw new Error('complete');
+      } catch (err) {
+        api('/multipart/abort', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, uploadId }),
+        }).catch(() => {});
+        throw err;
+      }
+    }
+
+    function uploadPart(key, uploadId, partNumber, chunk, onLoaded) {
+      return new Promise((resolve, reject) => {
+        const q = new URLSearchParams({ key, uploadId, partNumber });
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `${WORKER_URL}/multipart/part?${q}`);
+        xhr.setRequestHeader('X-Arkiv-Passord', password);
+        xhr.upload.addEventListener('progress', e => onLoaded(e.loaded));
+        xhr.onload = () => xhr.status === 200 ? resolve(JSON.parse(xhr.responseText)) : reject(new Error(xhr.status));
+        xhr.onerror = () => reject(new Error('network'));
+        xhr.send(chunk);
+      });
+    }
+
+    // ── Liste ──────────────────────────────────────────────────
+    async function loadList() {
+      const list = $('list');
+      const res = await api('/list').catch(() => null);
+      if (!res || !res.ok) {
+        list.innerHTML = '<p class="error">Klarte ikke å hente videoene.</p>';
+        return;
+      }
+      const files = await res.json();
+      if (!files.length) {
+        list.innerHTML = '<p class="empty">Ingen videoer ennå.</p>';
+        return;
+      }
+      list.innerHTML = '';
+      for (const f of files) {
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `
+          <p class="name"></p>
+          <p class="meta"></p>
+          <div class="player"></div>
+          <div class="actions">
+            <button class="play">Se</button>
+            <a class="dl">Last ned</a>
+            <button class="del">Slett</button>
+          </div>`;
+        el.querySelector('.name').textContent = f.name;
+        el.querySelector('.meta').textContent =
+          [f.uploader, fmtDate(f.uploaded), fmtSize(f.size)].filter(Boolean).join(' · ');
+        el.querySelector('.dl').href = f.url + '&dl=1';
+        el.querySelector('.play').addEventListener('click', e => {
+          const player = el.querySelector('.player');
+          if (player.firstChild) { player.innerHTML = ''; e.target.textContent = 'Se'; return; }
+          const v = document.createElement('video');
+          v.src = f.url; v.controls = true; v.playsInline = true; v.autoplay = true;
+          player.appendChild(v);
+          e.target.textContent = 'Skjul';
+        });
+        el.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm(`Slette «${f.name}»? Dette kan ikke angres.`)) return;
+          const r = await api(`/delete?key=${encodeURIComponent(f.key)}`, { method: 'DELETE' }).catch(() => null);
+          if (r && r.ok) el.remove(); else alert('Sletting feilet.');
+        });
+        list.appendChild(el);
+      }
+    }
+
+    function fmtSize(b) {
+      return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB';
+    }
+    function fmtDate(d) {
+      return new Date(d).toLocaleString('no-NO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+  </script>
+</body>
+</html>

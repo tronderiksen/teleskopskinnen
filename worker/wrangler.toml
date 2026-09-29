@@ -1,0 +1,11 @@
+name = "teleskopskinnen-arkiv"
+main = "index.js"
+compatibility_date = "2024-09-01"
+account_id = "be00d9c233fff6c348815102ee0e68b4"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "teleskopskinnen-arkiv"
+
+# Passordet settes som secret, aldri i koden:
+#   npx wrangler secret put ARKIV_PASSORD
