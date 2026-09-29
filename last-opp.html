@@ -85,7 +85,9 @@
             $('bar').style.width = pct + '%';
           });
         } catch (err) {
-          $('upload-error').textContent = `Opplasting av «${file.name}» feilet. Sjekk nettet og prøv igjen.`;
+          $('upload-error').textContent = err.message === 'full'
+            ? 'Arkivet er fullt. Si fra til Trond, så rydder han plass.'
+            : `Opplasting av «${file.name}» feilet. Sjekk nettet og prøv igjen.`;
           $('progress').classList.add('hidden');
           refreshButton();
           return;
@@ -102,8 +104,9 @@
     });
 
     async function uploadFile(file, uploader, onProgress) {
-      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || 'video/mp4' });
+      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || 'video/mp4', size: file.size });
       const createRes = await fetch(`${WORKER_URL}/multipart/create?${q}`, { method: 'POST' });
+      if (createRes.status === 507) throw new Error('full');
       if (!createRes.ok) throw new Error('create');
       const { key, uploadId } = await createRes.json();
 
@@ -122,6 +125,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key, uploadId, parts }),
         });
+        if (res.status === 507) throw new Error('full');
         if (!res.ok) throw new Error('complete');
       } catch (err) {
         fetch(`${WORKER_URL}/multipart/abort`, {

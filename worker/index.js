@@ -5,6 +5,7 @@
 
 const LINK_TTL_SECONDS = 6 * 60 * 60; // signerte lenker varer 6 timer
 const MAX_PARTS = 100; // 100 × 50 MB = maks 5 GB per video
+const STORAGE_LIMIT = 9.9e9; // under R2 sin gratisgrense på 10 GB
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,6 +41,19 @@ async function signedUrl(origin, secret, key) {
   const sig = await sign(secret, `${key}:${exp}`);
   return `${origin}/fil?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
 }
+
+async function usedBytes(env) {
+  let total = 0;
+  let cursor;
+  do {
+    const page = await env.BUCKET.list({ cursor });
+    for (const o of page.objects) total += o.size;
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return total;
+}
+
+const full = () => json({ error: 'Arkivet er fullt', full: true }, 507);
 
 function cleanName(s) {
   return (s || '').normalize('NFC').replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 120) || 'video';
@@ -97,6 +111,8 @@ export default {
       const uploader = cleanName(url.searchParams.get('uploader')).slice(0, 40);
       const contentType = url.searchParams.get('contentType') || 'video/mp4';
       if (!contentType.startsWith('video/')) return json({ error: 'Bare video' }, 400);
+      const size = parseInt(url.searchParams.get('size'), 10) || 0;
+      if (await usedBytes(env) + size > STORAGE_LIMIT) return full();
       const date = new Date().toISOString().slice(0, 10);
       const key = `${date}/${Date.now()}-${original}`;
       const mpu = await env.BUCKET.createMultipartUpload(key, {
@@ -128,6 +144,11 @@ export default {
       }
       const mpu = env.BUCKET.resumeMultipartUpload(key, uploadId);
       await mpu.complete(parts);
+      // Sjekk igjen med ekte størrelse — klienten kan ha oppgitt feil size
+      if (await usedBytes(env) > STORAGE_LIMIT) {
+        await env.BUCKET.delete(key);
+        return full();
+      }
       return json({ ok: true });
     }
 
