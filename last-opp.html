@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Last opp video – Teleskopskinnen</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="arkiv.css">
+</head>
+<body>
+  <main>
+    <header>
+      <a href="/"><img src="logo.png" alt="Teleskopskinnen"></a>
+      <h1>Last opp video</h1>
+      <p class="sub">Videoer fra jobb og produkttesting</p>
+    </header>
+
+    <section class="card">
+      <label for="uploader">Hvem laster opp?</label>
+      <input type="text" id="uploader" list="names" placeholder="Navnet ditt" autocomplete="name">
+      <datalist id="names"><option value="Tore"><option value="Eirik"><option value="Trond"></datalist>
+      <label class="picker">
+        <input type="file" id="files" accept="video/*" multiple>
+        <span id="picker-text">Trykk for å velge videoer</span>
+      </label>
+      <button class="btn" id="upload-btn" disabled>Last opp</button>
+      <div id="progress" class="hidden">
+        <p class="status" id="progress-text"></p>
+        <div class="bar"><div id="bar"></div></div>
+        <p class="status">Ikke lukk siden før opplastingen er ferdig.</p>
+      </div>
+      <p class="done hidden" id="done">Takk! Videoen er lastet opp.</p>
+      <p class="error" id="upload-error"></p>
+    </section>
+  </main>
+
+  <script>
+    const WORKER_URL = 'https://teleskopskinnen-arkiv.trondfe.workers.dev';
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB — under Worker-grensen på 100 MB
+    const MAX_SIZE = 5 * 1024 * 1024 * 1024; // samme grense som workeren
+
+    const $ = id => document.getElementById(id);
+    const store = {
+      get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+    };
+
+    let selected = [];
+    $('uploader').value = store.get('arkiv-navn') || '';
+
+    const refreshButton = () => {
+      $('upload-btn').disabled = !(selected.length && $('uploader').value.trim());
+    };
+    $('files').addEventListener('change', e => {
+      selected = [...e.target.files];
+      $('done').classList.add('hidden');
+      $('upload-error').textContent = '';
+      const tooBig = selected.find(f => f.size > MAX_SIZE);
+      if (tooBig) {
+        $('upload-error').textContent = `«${tooBig.name}» er over 5 GB. Del den opp eller velg en kortere video.`;
+        selected = [];
+      }
+      $('picker-text').textContent = selected.length
+        ? `${selected.length} video${selected.length > 1 ? 'er' : ''} valgt (${fmtSize(selected.reduce((s, f) => s + f.size, 0))})`
+        : 'Trykk for å velge videoer';
+      refreshButton();
+    });
+    $('uploader').addEventListener('input', refreshButton);
+
+    $('upload-btn').addEventListener('click', async () => {
+      const uploader = $('uploader').value.trim();
+      store.set('arkiv-navn', uploader);
+      $('upload-btn').disabled = true;
+      $('upload-error').textContent = '';
+      $('done').classList.add('hidden');
+      $('progress').classList.remove('hidden');
+
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i];
+        const label = selected.length > 1 ? `Video ${i + 1} av ${selected.length}` : 'Laster opp';
+        try {
+          await uploadFile(file, uploader, pct => {
+            $('progress-text').textContent = `${label}: ${Math.round(pct)} %`;
+            $('bar').style.width = pct + '%';
+          });
+        } catch (err) {
+          $('upload-error').textContent = `Opplasting av «${file.name}» feilet. Sjekk nettet og prøv igjen.`;
+          $('progress').classList.add('hidden');
+          refreshButton();
+          return;
+        }
+      }
+
+      $('done').textContent = selected.length > 1 ? `Takk! ${selected.length} videoer er lastet opp.` : 'Takk! Videoen er lastet opp.';
+      $('done').classList.remove('hidden');
+      $('progress').classList.add('hidden');
+      $('bar').style.width = '0';
+      selected = [];
+      $('files').value = '';
+      $('picker-text').textContent = 'Trykk for å velge flere videoer';
+    });
+
+    async function uploadFile(file, uploader, onProgress) {
+      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || 'video/mp4' });
+      const createRes = await fetch(`${WORKER_URL}/multipart/create?${q}`, { method: 'POST' });
+      if (!createRes.ok) throw new Error('create');
+      const { key, uploadId } = await createRes.json();
+
+      const parts = [];
+      let done = 0;
+      try {
+        for (let offset = 0, n = 1; offset < file.size; offset += CHUNK_SIZE, n++) {
+          const chunk = file.slice(offset, offset + CHUNK_SIZE);
+          parts.push(await uploadPart(key, uploadId, n, chunk, loaded => {
+            onProgress(((done + loaded) / file.size) * 100);
+          }));
+          done += chunk.size;
+        }
+        const res = await fetch(`${WORKER_URL}/multipart/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, uploadId, parts }),
+        });
+        if (!res.ok) throw new Error('complete');
+      } catch (err) {
+        fetch(`${WORKER_URL}/multipart/abort`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, uploadId }),
+        }).catch(() => {});
+        throw err;
+      }
+    }
+
+    function uploadPart(key, uploadId, partNumber, chunk, onLoaded) {
+      return new Promise((resolve, reject) => {
+        const q = new URLSearchParams({ key, uploadId, partNumber });
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `${WORKER_URL}/multipart/part?${q}`);
+        xhr.upload.addEventListener('progress', e => onLoaded(e.loaded));
+        xhr.onload = () => xhr.status === 200 ? resolve(JSON.parse(xhr.responseText)) : reject(new Error(xhr.status));
+        xhr.onerror = () => reject(new Error('network'));
+        xhr.send(chunk);
+      });
+    }
+
+    function fmtSize(b) {
+      return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB';
+    }
+  </script>
+</body>
+</html>

@@ -1,8 +1,10 @@
-// Teleskopskinnen arkiv — tar imot videoer fra /arkiv og lagrer dem i R2.
-// Alle kall krever headeren X-Arkiv-Passord, bortsett fra /fil som bruker
-// signerte lenker (så <video> og nedlasting fungerer uten header).
+// Teleskopskinnen arkiv — tar imot videoer fra /last-opp og lagrer dem i R2.
+// Opplasting (/multipart/*) er åpen. Arkivet (/login, /list, /delete) krever
+// headeren X-Arkiv-Passord. /fil bruker signerte lenker fra /list, så <video>
+// og nedlasting fungerer uten header.
 
 const LINK_TTL_SECONDS = 6 * 60 * 60; // signerte lenker varer 6 timer
+const MAX_PARTS = 100; // 100 × 50 MB = maks 5 GB per video
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -87,21 +89,14 @@ export default {
       return new Response(obj.body, { headers });
     }
 
-    // Alt under her krever passord
-    if (!safeEqual(request.headers.get('X-Arkiv-Passord'), secret)) {
-      return json({ error: 'Feil passord' }, 401);
-    }
-
-    // ─── Sjekk passord ──────────────────────────────────────────
-    if (request.method === 'POST' && path === '/login') {
-      return json({ ok: true });
-    }
+    // ─── Opplasting er åpen (ingen passord) ─────────────────────
 
     // ─── Multipart: start ───────────────────────────────────────
     if (request.method === 'POST' && path === '/multipart/create') {
       const original = cleanName(url.searchParams.get('filename'));
       const uploader = cleanName(url.searchParams.get('uploader')).slice(0, 40);
       const contentType = url.searchParams.get('contentType') || 'video/mp4';
+      if (!contentType.startsWith('video/')) return json({ error: 'Bare video' }, 400);
       const date = new Date().toISOString().slice(0, 10);
       const key = `${date}/${Date.now()}-${original}`;
       const mpu = await env.BUCKET.createMultipartUpload(key, {
@@ -119,6 +114,7 @@ export default {
       if (!key || !uploadId || !partNumber) {
         return json({ error: 'key, uploadId, partNumber mangler' }, 400);
       }
+      if (partNumber > MAX_PARTS) return json({ error: 'Filen er for stor' }, 413);
       const mpu = env.BUCKET.resumeMultipartUpload(key, uploadId);
       const part = await mpu.uploadPart(partNumber, request.body);
       return json({ partNumber: part.partNumber, etag: part.etag });
@@ -140,6 +136,16 @@ export default {
       const { key, uploadId } = await request.json();
       if (!key || !uploadId) return json({ error: 'key, uploadId mangler' }, 400);
       await env.BUCKET.resumeMultipartUpload(key, uploadId).abort();
+      return json({ ok: true });
+    }
+
+    // Alt under her (arkivet) krever passord
+    if (!safeEqual(request.headers.get('X-Arkiv-Passord'), secret)) {
+      return json({ error: 'Feil passord' }, 401);
+    }
+
+    // ─── Sjekk passord ──────────────────────────────────────────
+    if (request.method === 'POST' && path === '/login') {
       return json({ ok: true });
     }
 
