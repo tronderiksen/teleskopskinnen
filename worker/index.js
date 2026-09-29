@@ -1,4 +1,4 @@
-// Teleskopskinnen arkiv — tar imot videoer fra /last-opp og lagrer dem i R2.
+// Teleskopskinnen arkiv — tar imot bilder og videoer fra /last-opp og lagrer dem i R2.
 // Opplasting (/multipart/*) er åpen. Arkivet (/login, /list, /delete) krever
 // headeren X-Arkiv-Passord. /fil bruker signerte lenker fra /list, så <video>
 // og nedlasting fungerer uten header.
@@ -56,7 +56,7 @@ async function usedBytes(env) {
 const full = () => json({ error: 'Arkivet er fullt', full: true }, 507);
 
 function cleanName(s) {
-  return (s || '').normalize('NFC').replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 120) || 'video';
+  return (s || '').normalize('NFC').replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 120) || 'fil';
 }
 
 export default {
@@ -110,7 +110,7 @@ export default {
       const original = cleanName(url.searchParams.get('filename'));
       const uploader = cleanName(url.searchParams.get('uploader')).slice(0, 40);
       const contentType = url.searchParams.get('contentType') || 'video/mp4';
-      if (!contentType.startsWith('video/')) return json({ error: 'Bare video' }, 400);
+      if (!/^(video|image)\//.test(contentType)) return json({ error: 'Bare bilder og video' }, 400);
       const size = parseInt(url.searchParams.get('size'), 10) || 0;
       if (await usedBytes(env) + size > STORAGE_LIMIT) return full();
       const date = new Date().toISOString().slice(0, 10);
@@ -175,7 +175,7 @@ export default {
       const objects = [];
       let cursor;
       do {
-        const page = await env.BUCKET.list({ cursor, include: ['customMetadata'] });
+        const page = await env.BUCKET.list({ cursor, include: ['customMetadata', 'httpMetadata'] });
         objects.push(...page.objects);
         cursor = page.truncated ? page.cursor : undefined;
       } while (cursor);
@@ -185,6 +185,7 @@ export default {
         name: o.customMetadata?.originalName || o.key.split('/').pop(),
         uploader: o.customMetadata?.uploader || '',
         size: o.size,
+        type: o.httpMetadata?.contentType || '',
         uploaded: o.uploaded,
         url: await signedUrl(url.origin, secret, o.key),
       })));

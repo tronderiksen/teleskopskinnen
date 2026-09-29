@@ -13,7 +13,7 @@
     <header>
       <a href="/"><img src="logo.png" alt="Teleskopskinnen"></a>
       <h1>Arkiv</h1>
-      <p class="sub">Alle opplastede videoer</p>
+      <p class="sub">Alle opplastede bilder og videoer</p>
     </header>
 
     <!-- INNLOGGING -->
@@ -31,7 +31,7 @@
       </section>
 
       <section class="card">
-        <h2>Alle videoer</h2>
+        <h2>Alle filer</h2>
         <div id="list"><p class="empty">Laster…</p></div>
       </section>
       <p style="text-align:center"><button class="logout" id="logout">Logg ut</button></p>
@@ -149,12 +149,12 @@
       const list = $('list');
       const res = await api('/list').catch(() => null);
       if (!res || !res.ok) {
-        list.innerHTML = '<p class="error">Klarte ikke å hente videoene.</p>';
+        list.innerHTML = '<p class="error">Klarte ikke å hente filene.</p>';
         return;
       }
       const files = await res.json();
       if (!files.length) {
-        list.innerHTML = '<p class="empty">Ingen videoer ennå.</p>';
+        list.innerHTML = '<p class="empty">Ingen filer ennå.</p>';
         return;
       }
       list.innerHTML = '';
@@ -184,9 +184,15 @@
         el.querySelector('.play').addEventListener('click', e => {
           const player = el.querySelector('.player');
           if (player.firstChild) { player.innerHTML = ''; e.target.textContent = 'Se'; return; }
-          const v = document.createElement('video');
-          v.src = f.url; v.controls = true; v.playsInline = true; v.autoplay = true;
-          player.appendChild(v);
+          if (f.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = f.url; img.alt = f.name;
+            player.appendChild(img);
+          } else {
+            const v = document.createElement('video');
+            v.src = f.url; v.controls = true; v.playsInline = true; v.autoplay = true;
+            player.appendChild(v);
+          }
           e.target.textContent = 'Skjul';
         });
         el.querySelector('.del').addEventListener('click', async () => {

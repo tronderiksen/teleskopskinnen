@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>Last opp video – Teleskopskinnen</title>
+  <title>Last opp – Teleskopskinnen</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="arkiv.css">
 </head>
@@ -12,8 +12,8 @@
   <main>
     <header>
       <a href="/"><img src="logo.png" alt="Teleskopskinnen"></a>
-      <h1>Last opp video</h1>
-      <p class="sub">Videoer fra jobb og produkttesting</p>
+      <h1>Last opp</h1>
+      <p class="sub">Bilder og videoer fra jobb og produkttesting</p>
     </header>
 
     <section class="card">
@@ -21,8 +21,8 @@
       <input type="text" id="uploader" list="names" placeholder="Navnet ditt" autocomplete="name">
       <datalist id="names"><option value="Tore"><option value="Eirik"><option value="Trond"></datalist>
       <label class="picker">
-        <input type="file" id="files" accept="video/*" multiple>
-        <span id="picker-text">Trykk for å velge videoer</span>
+        <input type="file" id="files" accept="image/*,video/*" multiple>
+        <span id="picker-text">Trykk for å velge bilder eller videoer</span>
       </label>
       <button class="btn" id="upload-btn" disabled>Last opp</button>
       <div id="progress" class="hidden">
@@ -30,7 +30,7 @@
         <div class="bar"><div id="bar"></div></div>
         <p class="status">Ikke lukk siden før opplastingen er ferdig.</p>
       </div>
-      <p class="done hidden" id="done">Takk! Videoen er lastet opp.</p>
+      <p class="done hidden" id="done">Takk! Filen er lastet opp.</p>
       <p class="error" id="upload-error"></p>
     </section>
   </main>
@@ -62,8 +62,8 @@
         selected = [];
       }
       $('picker-text').textContent = selected.length
-        ? `${selected.length} video${selected.length > 1 ? 'er' : ''} valgt (${fmtSize(selected.reduce((s, f) => s + f.size, 0))})`
-        : 'Trykk for å velge videoer';
+        ? `${selected.length} fil${selected.length > 1 ? 'er' : ''} valgt (${fmtSize(selected.reduce((s, f) => s + f.size, 0))})`
+        : 'Trykk for å velge bilder eller videoer';
       refreshButton();
     });
     $('uploader').addEventListener('input', refreshButton);
@@ -78,7 +78,7 @@
 
       for (let i = 0; i < selected.length; i++) {
         const file = selected[i];
-        const label = selected.length > 1 ? `Video ${i + 1} av ${selected.length}` : 'Laster opp';
+        const label = selected.length > 1 ? `Fil ${i + 1} av ${selected.length}` : 'Laster opp';
         try {
           await uploadFile(file, uploader, pct => {
             $('progress-text').textContent = `${label}: ${Math.round(pct)} %`;
@@ -94,17 +94,17 @@
         }
       }
 
-      $('done').textContent = selected.length > 1 ? `Takk! ${selected.length} videoer er lastet opp.` : 'Takk! Videoen er lastet opp.';
+      $('done').textContent = selected.length > 1 ? `Takk! ${selected.length} filer er lastet opp.` : 'Takk! Filen er lastet opp.';
       $('done').classList.remove('hidden');
       $('progress').classList.add('hidden');
       $('bar').style.width = '0';
       selected = [];
       $('files').value = '';
-      $('picker-text').textContent = 'Trykk for å velge flere videoer';
+      $('picker-text').textContent = 'Trykk for å velge flere';
     });
 
     async function uploadFile(file, uploader, onProgress) {
-      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || 'video/mp4', size: file.size });
+      const q = new URLSearchParams({ filename: file.name, uploader, contentType: file.type || guessType(file.name), size: file.size });
       const createRes = await fetch(`${WORKER_URL}/multipart/create?${q}`, { method: 'POST' });
       if (createRes.status === 507) throw new Error('full');
       if (!createRes.ok) throw new Error('create');
@@ -147,6 +147,13 @@
         xhr.onerror = () => reject(new Error('network'));
         xhr.send(chunk);
       });
+    }
+
+    // Noen iPhone-filer kommer uten type — gjett ut fra filendelsen
+    function guessType(name) {
+      const ext = name.split('.').pop().toLowerCase();
+      const types = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif', gif: 'image/gif', webp: 'image/webp', mov: 'video/quicktime', mp4: 'video/mp4', m4v: 'video/x-m4v' };
+      return types[ext] || 'video/mp4';
     }
 
     function fmtSize(b) {

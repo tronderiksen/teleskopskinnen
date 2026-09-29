@@ -41,12 +41,12 @@ input[type=text], input[type=password] {
 .done { margin-top: 12px; color: var(--blue); font-weight: 700; }
 .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
 .bar div { height: 100%; width: 0; background: var(--blue); transition: width 0.2s; }
-.hidden { display: none; }
+.hidden { display: none !important; }
 .item { border-top: 1px solid var(--line); padding: 14px 0; }
 .item:first-child { border-top: 0; }
 .item .name { font-weight: 600; word-break: break-word; }
 .item .meta { color: var(--muted); font-size: 0.9rem; margin: 2px 0 10px; }
-.item video { width: 100%; border-radius: 4px; background: #000; margin-bottom: 10px; }
+.item video, .item img { width: 100%; border-radius: 4px; background: #000; margin-bottom: 10px; display: block; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions a, .actions button {
   font-size: 0.9rem; font-weight: 600; padding: 8px 12px; border-radius: 4px; cursor: pointer;
