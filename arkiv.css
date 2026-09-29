@@ -54,4 +54,11 @@ input[type=text], input[type=password] {
 }
 .actions .del { border-color: var(--red); color: var(--red); margin-left: auto; }
 .empty { color: var(--muted); }
+.folder { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.folder p { flex: 1; min-width: 180px; }
+.folder strong { word-break: break-word; }
+.folder button {
+  font-size: 0.9rem; font-weight: 600; padding: 8px 12px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--ink); background: #fff; color: var(--ink);
+}
 .logout { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 0.9rem; margin-top: 8px; }

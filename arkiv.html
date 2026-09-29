@@ -25,6 +25,11 @@
     </section>
 
     <div id="app" class="hidden">
+      <section class="card folder hidden" id="folder">
+        <p>Nedlastinger lagres i: <strong id="folder-name">ingen mappe valgt</strong></p>
+        <button id="folder-btn">Velg mappe</button>
+      </section>
+
       <section class="card">
         <h2>Alle videoer</h2>
         <div id="list"><p class="empty">Laster…</p></div>
@@ -44,6 +49,74 @@
     };
 
     let password = store.get('arkiv-pw') || '';
+
+    // ── Nedlastingsmappe (Chrome/Edge på Mac/PC) ───────────────
+    // Mappen velges én gang og huskes i IndexedDB. Andre nettlesere
+    // (Safari, iPhone) faller tilbake til vanlig nedlasting.
+    const canPickFolder = 'showDirectoryPicker' in window;
+
+    function idb(mode, fn) {
+      return new Promise((resolve, reject) => {
+        const open = indexedDB.open('arkiv', 1);
+        open.onupgradeneeded = () => open.result.createObjectStore('kv');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const req = fn(open.result.transaction('kv', mode).objectStore('kv'));
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        };
+      });
+    }
+    const getDir = () => idb('readonly', s => s.get('dir')).catch(() => null);
+    const setDir = dir => idb('readwrite', s => s.put(dir, 'dir')).catch(() => {});
+
+    async function pickFolder() {
+      try {
+        const dir = await window.showDirectoryPicker({ id: 'arkiv', mode: 'readwrite' });
+        await setDir(dir);
+        $('folder-name').textContent = dir.name;
+        return dir;
+      } catch { return null; } // brukeren avbrøt
+    }
+
+    async function freeName(dir, name) {
+      const dot = name.lastIndexOf('.');
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      for (let i = 1; ; i++) {
+        const candidate = i === 1 ? name : `${base} (${i})${ext}`;
+        try { await dir.getFileHandle(candidate); } catch { return candidate; }
+      }
+    }
+
+    async function saveToFolder(f, btn) {
+      let dir = await getDir();
+      if (!dir) dir = await pickFolder();
+      if (!dir) return;
+      if (await dir.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+        alert('Fikk ikke lov til å lagre i mappen.');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Lagrer…';
+      try {
+        const res = await fetch(f.url);
+        if (!res.ok) throw new Error(res.status);
+        const handle = await dir.getFileHandle(await freeName(dir, f.name), { create: true });
+        await res.body.pipeTo(await handle.createWritable());
+        btn.textContent = 'Lagret ✓';
+      } catch {
+        btn.disabled = false;
+        btn.textContent = 'Last ned';
+        alert('Lagring feilet. Last siden på nytt og prøv igjen.');
+      }
+    }
+
+    if (canPickFolder) {
+      $('folder').classList.remove('hidden');
+      $('folder-btn').addEventListener('click', pickFolder);
+      getDir().then(dir => { if (dir) $('folder-name').textContent = dir.name; });
+    }
 
     const api = (path, opts = {}) => fetch(WORKER_URL + path, {
       ...opts,
@@ -95,12 +168,19 @@
           <div class="actions">
             <button class="play">Se</button>
             <a class="dl">Last ned</a>
+            <button class="save hidden">Last ned</button>
             <button class="del">Slett</button>
           </div>`;
         el.querySelector('.name').textContent = f.name;
         el.querySelector('.meta').textContent =
           [f.uploader, fmtDate(f.uploaded), fmtSize(f.size)].filter(Boolean).join(' · ');
         el.querySelector('.dl').href = f.url + '&dl=1';
+        if (canPickFolder) {
+          el.querySelector('.dl').classList.add('hidden');
+          const save = el.querySelector('.save');
+          save.classList.remove('hidden');
+          save.addEventListener('click', () => saveToFolder(f, save));
+        }
         el.querySelector('.play').addEventListener('click', e => {
           const player = el.querySelector('.player');
           if (player.firstChild) { player.innerHTML = ''; e.target.textContent = 'Se'; return; }
